@@ -1,14 +1,68 @@
 from ast import Delete
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from pydantic import PostgresDsn
 
 app = FastAPI()
-
+# **Query parameters** --> more flexible, it will work even if we add extra parameters like c=4
+# http://127.0.0.1:8001/add?c=4&a=1&b=2
 @app.get("/add")
 def add(a: float, b: float):
-    return {"a":a,"b":b,"sum":a+b}
+    return {"a":a,"b":b,"sum":a+b,"message":"From Query Parameters"}
 
-add(1,2)
+
+# **Path Parameters** --> Rigid, URL has to be exact for this to work
+# http://127.0.0.1:8001/add/path/1/2 --> will work
+# http://127.0.0.1:8001/add/path/1/2/3 --> wont work
+@app.get("/add/path/{a}/{b}")
+def add(a:float, b:float):
+    return {"a":a,"b":b,"sum":a+b,"message":"From Path Parameters"}
+
+
+@app.get("/user/{user_id}")
+def get_user(user_id: int):
+    return {"user_id":user_id, "name":"test"} #you can add any other details you need like age, addr, etc
+# No need to add it anywhere else
+# http://127.0.0.1:8001/user/1
+# {"user_id":1,"name":"test"}
+
+# **post**
+@app.post("/user")
+def create_user(user: dict):
+    return {"user_id":user["user_id"], "name":user["name"]}
+# http://127.0.0.1:8001/user
+# in post >> body >>  raw >> json
+# {
+#     "user_id":"123",
+#     "name":"test123"
+
+# }
+
+
+# output:
+# {
+# 	"user_id": "123",
+# 	"name": "test123"
+# }
+
+
+
+# **headers**
+#if we dont put test or something else here it will run the above since it cannot understand the variable
+@app.get("/user/test/headers") 
+def get_user_headers(request:Request):
+    headers_dict=dict(request.headers)
+    print("Recieved headers:",headers_dict) # this will print in terminal logs below for debugging
+    return{"headers":headers_dict}
+# get http://127.0.0.1:8001/user/test/headers
+# >> headers tab >> test: test, name xcv
+# {"headers":{"accept":"*/*","accept-encoding":"gzip, deflate, br","user-agent":"EchoapiRuntime/1.1.0","connection":"keep-alive","test":"test","name":"xcv","content-type":"application/json","cache-control":"no-cache","host":"127.0.0.1:8001","content-length":"50"}}
+
+# Terminal logs
+# INFO:     Waiting for application startup.
+# INFO:     Application startup complete.
+# Recieved headers: {'accept': '*/*', 'accept-encoding': 'gzip, deflate, br', 'user-agent': 'EchoapiRuntime/1.1.0', 'connection': 'keep-alive', 'test': 'test', 'name': 'xcv', 'content-type': 'application/json', 'cache-control': 'no-cache', 'host': '127.0.0.1:8001', 'content-length': '50'}
+# INFO:     127.0.0.1:63509 - "GET /user/test/headers HTTP/1.1" 200 OK
+# **note** 
 
 
 # GET
