@@ -23,4 +23,15 @@ class Migration(migrations.Migration):
             field=models.DateTimeField(auto_now=True, default=django.utils.timezone.now),
             preserve_default=False,
         ),
+        migrations.AddField(
+            model_name="task",
+            name="user",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="task_details",
+                to="tasks.user",
+            ),
+        ),
     ]

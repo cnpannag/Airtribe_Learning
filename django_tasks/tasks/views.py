@@ -7,8 +7,8 @@ from rest_framework.decorators import api_view
 from rest_framework.views import APIView
 from rest_framework.viewsets import ViewSet
 
-from .models import Task
-from .serializer import TaskSerializer
+from .models import Task, User
+from .serializer import TaskSerializer, UserSerializer, TaskUserSerializer
 
 # Create your views here.
 # a view is a function that takes a request and returns a response
@@ -236,8 +236,39 @@ class TaskViewSet(ModelViewSet):
 # but when we are not using a model and we want to create a viewset for it, we can use ViewSet.
 
 
+class UserViewSet(ModelViewSet):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
 
-    
+    @action(detail=False, methods=["get"])
+    def get_all_users(self, request):
+        users = User.objects.all()
+        serializer = UserSerializer(users, many=True)
+        return Response(serializer.data)
+    # api for this will be 127.0.0.1:8001/api/users/get-all-users/
+
+    @action(detail=True, methods=["get"])
+    def get_user_tasks(self, request, pk=None):
+        # user = User.objects.get(id=pk)
+        # tasks = user.task_details.all()
+        # serializer = TaskSerializer(tasks, many=True)
+        # return Response(serializer.data)
+
+# another way to get the tasks for a user
+        tasks = Task.objects.filter(user__id=pk) # __id is used to get the id of the user
+        serializer = TaskSerializer(tasks, many=True)
+        return Response(serializer.data)
+    # api for this will be 127.0.0.1:8001/api/users/1/get-user-tasks/
     
         
-        
+class TaskUserViewSet(ModelViewSet):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+
+    @action(detail=True, methods=["get"])
+    def get_user_tasks(self, request, pk=None):
+        tasks=Task.objects.filter(user__id=pk)
+        user = tasks.first().user
+        serializer = TaskUserSerializer(user)
+        return Response(serializer.data)
+    # api for this will be 127.0.0.1:8001/api/users/1/get-user-tasks/

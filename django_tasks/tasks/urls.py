@@ -1,5 +1,5 @@
 from django.urls import include, path
-from .views import add_numbers, hello_world, get_all_tasks, get_tasks_by_id, create_task, TaskView, TaskViewSet
+from .views import add_numbers, hello_world, get_all_tasks, get_tasks_by_id, create_task, TaskView, TaskViewSet, UserViewSet
 from rest_framework.routers import DefaultRouter
 
 # in the config/urls.py file, we add path("api/", include("tasks.urls"))
@@ -31,7 +31,8 @@ from rest_framework.routers import DefaultRouter
 
 # can skip all the above while using TaskViewSet by adding the following:
 router = DefaultRouter()
-router.register(r'tasks', TaskViewSet)
+router.register(r'tasks', TaskViewSet, basename='task')
+router.register(r'users', UserViewSet, basename='user')
 
 urlpatterns = [
     path("add-numbers/", add_numbers),

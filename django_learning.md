@@ -368,3 +368,88 @@ DELETE FROM tasks_task WHERE id = 2;
 Quit psql with `\q`.
 
 A row created through the API shows up in `SELECT * FROM tasks_task` immediately. A row inserted with SQL shows up in `GET /api/tasks/` immediately. Same table.
+
+
+Postgres is already connected in settings, and Docker is running with the same user, password, and database. You do not write a `CREATE TABLE` statement. Django creates the table from a model class when you run migrations.
+
+The piece that is still missing is the database model. `Issue` in `DevTrack/issues/models.py` is a normal Python class. `IssueSerializer` and `IssueView` expect a Django model, the same pattern as `Task` in `django_tasks/tasks/models.py`.
+
+## Where the table is defined
+
+Put the columns in `DevTrack/issues/models.py`. The table name is set on the model, not in SQL.
+
+```python
+from django.db import models
+
+class Issue(models.Model):
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    status = models.CharField(max_length=20, default="open")
+    priority = models.CharField(max_length=20, default="medium")
+    reporter_id = models.IntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "issues"  # optional; omit this and Django names it issues_issue
+```
+
+- Field names (`title`, `status`, …) become columns.
+- `id` is added automatically as the primary key. You do not declare it.
+- `db_table = "issues"` forces the Postgres table name. If you leave `Meta` out, Django uses `issues_issue` (`app name` + `_` + `model name`).
+
+Your current `Issue` class (the one with `validate` and `describe`) cannot stay under that same name if the serializer imports it. A `ModelSerializer` and `ModelViewSet` only work with `models.Model`. Keep the domain class under another name, or replace it with this model.
+
+## Commands that create the table
+
+From the `DevTrack` folder, with Docker Postgres still up:
+
+```powershell
+cd DevTrack
+python manage.py makemigrations issues
+python manage.py migrate
+```
+
+- `makemigrations` writes a Python migration file under `DevTrack/issues/migrations/`. That file is Django’s version of `CREATE TABLE`.
+- `migrate` runs it against the database in `settings.py` (host `localhost`, port `5432`, database `postgres`).
+
+Check the connection before migrating:
+
+```powershell
+python manage.py dbshell
+```
+
+If that opens a Postgres prompt, the settings are correct.
+
+## What is already done
+
+- `DATABASES` in `DevTrack/config/settings.py` matches `docker-compose.yml` (`postgres` / `postgres` / `postgres` on port `5432`).
+- `psycopg` is in `requirements.txt`, which is the Postgres driver Django needs.
+- `"issues"` is in `INSTALLED_APPS`.
+
+`HOST` should stay `localhost` while Django runs on your machine and Postgres runs in Docker. Use `postgres` as the host only if Django itself is also a Docker service on the same compose network.
+
+## After the table exists
+
+Wire the API, which is not done yet. `DevTrack/config/urls.py` only has the admin route.
+
+1. Add `DevTrack/issues/urls.py` with a router, same idea as `django_tasks/tasks/urls.py`:
+
+```python
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
+from .views import IssueView
+
+router = DefaultRouter()
+router.register(r"issues", IssueView, basename="issue")
+
+urlpatterns = [
+    path("", include(router.urls)),
+]
+```
+
+2. In `DevTrack/config/urls.py`, add `path("api/", include("issues.urls"))`.
+
+`ModelViewSet` already provides list, retrieve, create, update, and delete. The extra `get` action in `views.py` is not required for that, and `IssueSerializer(issues)` needs `many=True` when serializing a queryset.
+
+I am in Ask mode, so I cannot edit these files. Switch to Agent mode if you want them applied in the project.
