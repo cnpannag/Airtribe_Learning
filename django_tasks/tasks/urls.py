@@ -1,5 +1,6 @@
 from django.urls import include, path
-from .views import add_numbers, hello_world, get_all_tasks, get_tasks_by_id, create_task, TaskView, TaskViewSet, UserViewSet
+from .views import TaskViewSet, UserViewSet  # , add_numbers, hello_world, get_all_tasks, get_tasks_by_id, create_task, TaskView
+# from rest_framework.pagination import PageNumberPagination
 from rest_framework.routers import DefaultRouter
 
 # in the config/urls.py file, we add path("api/", include("tasks.urls"))
@@ -35,6 +36,6 @@ router.register(r'tasks', TaskViewSet, basename='task')
 router.register(r'users', UserViewSet, basename='user')
 
 urlpatterns = [
-    path("add-numbers/", add_numbers),
+    # path("add-numbers/", add_numbers),
     path("", include(router.urls))
 ]

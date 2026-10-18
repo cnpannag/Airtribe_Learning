@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework", # Recognised as a Django app
+    "django_filters",  # Filtering for DRF (django-filter package)
     "tasks", # Our custom app
 ]
 
@@ -132,3 +133,14 @@ MAILERS = {
         "BACKEND": "django.core.mail.backends.console.EmailBackend",
     },
 }
+
+# Keep this as a string path. Importing rest_framework here runs before
+# REST_FRAMEWORK exists, and DRF then caches PAGE_SIZE as None.
+REST_FRAMEWORK = {
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10,
+}
+
+# Approach 1 (global): 127.0.0.1:8002/api/users/?page=1  -> 10 users
+# Approach 2 (TaskPagination on TaskViewSet): 127.0.0.1:8002/api/tasks/?page=1&page_size=20
+# Filtering (django-filter): 127.0.0.1:8002/api/tasks/?completed=true&title=Postgres&page=1

@@ -1,4 +1,5 @@
 django==6.1.1
 djangorestframework==3.18.1
+django-filter==26.2
 psycopg[binary]==3.3.6
 

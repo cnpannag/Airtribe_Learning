@@ -1,11 +1,11 @@
-from typing import override
+# from typing import override
+# from django.shortcuts import render
+# from rest_framework import status
+# from rest_framework.decorators import api_view
+# from rest_framework.views import APIView
+# from rest_framework.viewsets import ViewSet
 
-from django.shortcuts import render
-from rest_framework import status
 from rest_framework.response import Response
-from rest_framework.decorators import api_view
-from rest_framework.views import APIView
-from rest_framework.viewsets import ViewSet
 
 from .models import Task, User
 from .serializer import TaskSerializer, UserSerializer, TaskUserSerializer
@@ -14,63 +14,63 @@ from .serializer import TaskSerializer, UserSerializer, TaskUserSerializer
 # a view is a function that takes a request and returns a response
 
 
-@api_view(["GET"])  # This is how Django differentiates this from a regular function
-def hello_world(request):
-    # returns a response object
-    return Response({"message": "Hello, World!"})
+# @api_view(["GET"])  # This is how Django differentiates this from a regular function
+# def hello_world(request):
+#     # returns a response object
+#     return Response({"message": "Hello, World!"})
 
-@api_view(["GET"])
-def add_numbers(request):
-    # get the query params
-    a = int(request.query_params.get("a"))
-    b = int(request.query_params.get("b"))
-    return Response({"message": f"{a} + {b} = {a + b}"})
+# @api_view(["GET"])
+# def add_numbers(request):
+#     # get the query params
+#     a = int(request.query_params.get("a"))
+#     b = int(request.query_params.get("b"))
+#     return Response({"message": f"{a} + {b} = {a + b}"})
 # http://127.0.0.1:8001/api/add-numbers/?a=1&b=2
-#  "message": "1 + 2 = 3"
+# #  "message": "1 + 2 = 3"
 
-# ******* Tasks - File Reading *******
-import json
+# # ******* Tasks - File Reading *******
+# import json
 
-@api_view(["GET"])
-def get_all_tasks(request):
-    with open("tasks/files/tasks.json","r") as file:
-        tasks=json.loads(file.read())
-        # Return the tasks
-        return Response(tasks)
+# @api_view(["GET"])
+# def get_all_tasks(request):
+#     with open("tasks/files/tasks.json","r") as file:
+#         tasks=json.loads(file.read())
+#         # Return the tasks
+#         return Response(tasks)
 
-@api_view(["GET"])
-def get_tasks_by_id(request, id):
-    with open("tasks/files/tasks.json","r") as file:
-        tasks=json.loads(file.read())
-        for task in tasks:
-            if task["id"]==id:
-                return Response(task)
-        # Return the tasks
-        return Response("id not found", status=404)
+# @api_view(["GET"])
+# def get_tasks_by_id(request, id):
+#     with open("tasks/files/tasks.json","r") as file:
+#         tasks=json.loads(file.read())
+#         for task in tasks:
+#             if task["id"]==id:
+#                 return Response(task)
+#         # Return the tasks
+#         return Response("id not found", status=404)
 
 
-@api_view(["POST"])
-def create_task(request):
-    with open("tasks/files/tasks.json","r") as file:
-        tasks=json.loads(file.read())
-        # Create a new task
-    task={
-        "id": len(tasks)+1,
-        "title": request.data.get("title"),
-        "description": request.data.get("description"),
-        "completed": False
-    }
-    with open("tasks/files/tasks.json","w") as file:
-        tasks.append(task)
-        json.dump(tasks, file)
+# @api_view(["POST"])
+# def create_task(request):
+#     with open("tasks/files/tasks.json","r") as file:
+#         tasks=json.loads(file.read())
+#         # Create a new task
+#     task={
+#         "id": len(tasks)+1,
+#         "title": request.data.get("title"),
+#         "description": request.data.get("description"),
+#         "completed": False
+#     }
+#     with open("tasks/files/tasks.json","w") as file:
+#         tasks.append(task)
+#         json.dump(tasks, file)
     
-    return Response(task, status=201)
+#     return Response(task, status=201)
 
 
-def _get_all_tasks():
-        with open("tasks/files/tasks.json","r") as file:
-            tasks=json.loads(file.read())
-            return tasks
+# def _get_all_tasks():
+#         with open("tasks/files/tasks.json","r") as file:
+#             tasks=json.loads(file.read())
+#             return tasks
 
 
 
@@ -79,22 +79,22 @@ def _get_all_tasks():
 
 #************** another way to do the above **************************************** 
 
-class TaskView(APIView): # APIView is a class that helps us to create a view that can be used in the urls.py file
-        # This comes from the rest_framework.views import APIView
-        def post(self, request):
-            data=request.data
-            tasks=_get_all_tasks()
-        # Create a new task
-            task={
-                "id": len(tasks)+1,
-                "title": request.data.get("title"),
-                "description": request.data.get("description"),
-                "completed": False
-            }
-            with open("tasks/files/tasks.json","w") as file:
-                tasks.append(task)
-                json.dump(tasks, file)
-                return Response(task, status=201)
+# class TaskView(APIView): # APIView is a class that helps us to create a view that can be used in the urls.py file
+#         # This comes from the rest_framework.views import APIView
+#         def post(self, request):
+#             data=request.data
+#             tasks=_get_all_tasks()
+#         # Create a new task
+#             task={
+#                 "id": len(tasks)+1,
+#                 "title": request.data.get("title"),
+#                 "description": request.data.get("description"),
+#                 "completed": False
+#             }
+#             with open("tasks/files/tasks.json","w") as file:
+#                 tasks.append(task)
+#                 json.dump(tasks, file)
+#                 return Response(task, status=201)
 # post 127.0.0.1:8001/api/create-task-api/
 # {
 #     "title": "Task 5",
@@ -107,30 +107,30 @@ class TaskView(APIView): # APIView is a class that helps us to create a view tha
 # 	"description": "created with TaskView",
 # 	"completed": false
 # }
-        def get(self, request):
-            tasks=_get_all_tasks()
-            return Response(tasks)
-        # The above GET will not work because it will take the below one
-        # to fix this we have added another condition in the below get if id is none
+        # def get(self, request):
+        #     tasks=_get_all_tasks()
+        #     return Response(tasks)
+        # # The above GET will not work because it will take the below one
+        # # to fix this we have added another condition in the below get if id is none
 
-        def get(self, request, id):
-            tasks=_get_all_tasks()
-            if id is None:
-                return Response(tasks)
-            for task in tasks:
-                if task["id"]==id:
-                    return Response(task)
-            return Response("id not found", status=404)
+        # def get(self, request, id):
+        #     tasks=_get_all_tasks()
+        #     if id is None:
+        #         return Response(tasks)
+        #     for task in tasks:
+        #         if task["id"]==id:
+        #             return Response(task)
+        #     return Response("id not found", status=404)
         
-        def delete(self, request, id):
-            tasks=_get_all_tasks()
-            for task in tasks:
-                if task["id"]==id:
-                    tasks.remove(task)
-                    with open("tasks/files/tasks.json","w") as file:
-                        json.dump(tasks, file)
-                    return Response("task deleted", status=204)
-            return Response("id not found", status=404)
+        # def delete(self, request, id):
+        #     tasks=_get_all_tasks()
+        #     for task in tasks:
+        #         if task["id"]==id:
+        #             tasks.remove(task)
+        #             with open("tasks/files/tasks.json","w") as file:
+        #                 json.dump(tasks, file)
+        #             return Response("task deleted", status=204)
+        #     return Response("id not found", status=404)
 
 
 # class TaskViewSet(ViewSet):
@@ -207,15 +207,64 @@ class TaskView(APIView): # APIView is a class that helps us to create a view tha
 
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.decorators import action
+from rest_framework.filters import SearchFilter, OrderingFilter
+from django_filters.rest_framework import DjangoFilterBackend
+from .pagination import TaskPagination
+from .filters import TaskFilter
 # The whole above one can be simply replaces by the following using modelviewset:
 class TaskViewSet(ModelViewSet):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
+    pagination_class = TaskPagination  # overrides global PAGE_SIZE=10 for this viewset
+    # Approach 3: django-filter — TaskFilter lists every Task field
+    # Search: DRF SearchFilter — one ?search= word across search_fields (OR / icontains)
+    # Ordering: DRF OrderingFilter — ?ordering=field or ?ordering=-field (desc)
+    # filter_backends = [DjangoFilterBackend]  # filters only (before search was added)
+    # filter_backends = [DjangoFilterBackend, SearchFilter]  # filters + search (before ordering)
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = TaskFilter
+    search_fields = ["title", "description"]
+    ordering_fields = ["id", "title", "completed", "created_at", "updated_at"]
+    ordering = ["id"]  # default order when ?ordering= is omitted
+    # Filter URLs (per-field, values from query string):
+    #   /api/tasks/?completed=true
+    #   /api/tasks/?title=Postgres
+    #   /api/tasks/?description=linked
+    #   /api/tasks/?user=1&id=3
+    # Search URL (one box across title + description):
+    #   /api/tasks/?search=Postgres
+    # Ordering URL:
+    #   /api/tasks/?ordering=-id
+    #   /api/tasks/?ordering=title
+    #   /api/tasks/?ordering=-created_at
+    # Combine filter + search + ordering + pagination:
+    #   /api/tasks/?completed=false&search=API&ordering=-id&page=1&page_size=20
+
+    # Approach 1 (commented out): manual get_queryset filtering
+    # def get_queryset(self):
+    #     queryset = Task.objects.all()
+    #
+    #     completed = self.request.query_params.get("completed")
+    #     if completed is not None:
+    #         # value from URL: "true"/"1"/"yes" -> True; else -> False
+    #         # SQL: WHERE completed = true  (or false)
+    #         is_completed = completed.lower() in ("true", "1", "yes")
+    #         queryset = queryset.filter(completed=is_completed)
+    #
+    #     title = self.request.query_params.get("title")
+    #     if title:
+    #         # `title` is whatever the client sent in ?title=...
+    #         # title__icontains -> SQL: WHERE title ILIKE '%<that word>%'
+    #         queryset = queryset.filter(title__icontains=title)
+    #
+    #     return queryset
 
     # this will add on to what is already present in the ModelViewSet 
 
     @action(detail=False, methods=["get"])
     def get_incomplete_tasks(self, request):
+        # Same idea as ?completed=false on list, but a fixed custom URL.
+        # Does not use get_queryset filters or pagination.
         tasks = Task.objects.filter(completed=False)
         serializer = TaskSerializer(tasks, many=True)
         return Response(serializer.data)

@@ -176,7 +176,7 @@ Base URL: `http://127.0.0.1:8001`
 
 | Method | URL | Success code | Body |
 | --- | --- | --- | --- |
-| GET | `/api/tasks/` | 200 | none. Returns a list. |
+| GET | `/api/tasks/` | 200 | none. Returns one page: `count`, `next`, `previous`, `results`. Tasks use Approach 2 (default 20, optional `page_size`). |
 | POST | `/api/tasks/` | 201 | JSON below. Returns the created row, including `id` and timestamps. |
 | GET | `/api/tasks/1/` | 200 | none. Returns one row. 404 if that id does not exist. |
 | PUT | `/api/tasks/1/` | 200 | Full object: `title`, `description`, `completed`. |
@@ -596,3 +596,334 @@ can you pls cover more on Django vs fastapi
 👉 Since you’re already working with **PySpark, caching, and AWS**, I’d suggest **FastAPI for your real‑time data APIs** and **Django for internal dashboards/admin tools**. This way, you get the best of both worlds: **speed for big data pipelines** and **structure for enterprise data management**.  
 
 Would you like me to sketch a **step‑by‑step architecture diagram** showing how Django and FastAPI can co‑exist in a big data stack (with Spark, Redis, and AWS)?
+--------------------------------
+
+
+
+## Pagination
+
+`GET /api/tasks/` uses page-number pagination. The server is on port **8002**:
+
+`http://127.0.0.1:8002/api/tasks/?page=1&page_size=20`
+
+```json
+{
+  "count": 1003,
+  "next": "http://127.0.0.1:8002/api/tasks/?page=2&page_size=20",
+  "previous": null,
+  "results": []
+}
+```
+
+Live sample with `page_size=2`:
+
+`GET http://127.0.0.1:8002/api/tasks/?page=1&page_size=2`
+
+```json
+{
+  "count": 1003,
+  "next": "http://127.0.0.1:8002/api/tasks/?page=2&page_size=2",
+  "previous": null,
+  "results": [
+    {"id": 1, "title": "Learn Postgres", "completed": false, "user": null},
+    {"id": 2, "title": "models.CharField(max_length=200)", "completed": true, "user": null}
+  ]
+}
+```
+
+### Approach 1: global setting
+
+**`django_tasks/config/settings.py`** turns pagination on for every list view that does not set its own class:
+
+```python
+REST_FRAMEWORK = {
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10,
+}
+```
+
+Keep `DEFAULT_PAGINATION_CLASS` as a string. Do not import `PageNumberPagination` in `settings.py`. That import runs before `REST_FRAMEWORK` is assigned. The pagination class reads `PAGE_SIZE` while it is imported and caches `None`. The list endpoint then returns the whole table.
+
+With only Approach 1, `GET /api/tasks/?page=1` returns 10 tasks. `?page_size=` is ignored. DRF runs `LIMIT 10 OFFSET 0` for page 1.
+
+**`django_tasks/tasks/urls.py`**: the unused `PageNumberPagination` import and the `add-numbers` route were commented out. Neither one configured page size.
+
+Custom actions that return `Response(serializer.data)` still skip pagination. `get_incomplete_tasks` and `get_user_tasks` are unpaginated under both approaches.
+
+### Approach 2: custom `TaskPagination` on the viewset
+
+Lets the tasks list use a different default size, accept `?page_size=`, and cap how large that size can get. Overrides Approach 1 for `TaskViewSet` only.
+
+**`django_tasks/tasks/pagination.py`**:
+
+```python
+from rest_framework.pagination import PageNumberPagination
+
+class TaskPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = "page_size"
+    max_page_size = 50
+```
+
+**`django_tasks/tasks/views.py`**:
+
+```python
+from .pagination import TaskPagination
+
+class TaskViewSet(ModelViewSet):
+    queryset = Task.objects.all()
+    serializer_class = TaskSerializer
+    pagination_class = TaskPagination
+```
+
+| URL | Rows |
+| --- | --- |
+| `/api/tasks/?page=1` | 20 |
+| `/api/tasks/?page=1&page_size=20` | 20 |
+| `/api/tasks/?page=1&page_size=30` | 30 |
+| `/api/tasks/?page=1&page_size=500` | 50 (capped) |
+
+`UserViewSet` still uses Approach 1 (`PAGE_SIZE` 10). Both approaches still use `LIMIT` / `OFFSET`.
+
+### Approach 3 (later): cursor pagination
+
+Switch to `CursorPagination` when the table is large. `OFFSET` still scans every skipped row, and inserts move rows between pages. A cursor pages with `WHERE id > last_id LIMIT 10` and stays stable.
+
+## Filtering
+
+Pagination limits **how many** rows. Filtering chooses **which** rows. Both run on the list endpoint: filter first (`WHERE`), then paginate (`LIMIT` / `OFFSET`).
+
+SQL you want:
+
+```sql
+SELECT * FROM tasks_task
+WHERE completed = true AND title ILIKE '%Postgres%'
+LIMIT 20 OFFSET 0;
+```
+
+### Approach 1: `get_queryset` on `TaskViewSet`
+
+Override `get_queryset`. `ModelViewSet.list` calls it before pagination. Read query params and chain ORM filters.
+
+**`django_tasks/tasks/views.py`**:
+
+```python
+def get_queryset(self):
+    queryset = Task.objects.all()
+
+    completed = self.request.query_params.get("completed")
+    if completed is not None:
+        is_completed = completed.lower() in ("true", "1", "yes")
+        queryset = queryset.filter(completed=is_completed)
+
+    title = self.request.query_params.get("title")
+    if title:
+        # title__icontains -> ILIKE '%value%'
+        queryset = queryset.filter(title__icontains=title)
+
+    return queryset
+```
+
+| URL | SQL idea |
+| --- | --- |
+| `/api/tasks/?completed=true` | `WHERE completed = true` |
+| `/api/tasks/?title=Postgres` | `WHERE title ILIKE '%Postgres%'` |
+| `/api/tasks/?completed=true&title=Postgres&page=1&page_size=20` | both filters, then page |
+
+Example: `http://127.0.0.1:8002/api/tasks/?completed=true&title=Postgres&page=1&page_size=20`
+
+`count` is the filtered total. `get_incomplete_tasks` is the older fixed shortcut for `completed=False`; `?completed=false` on the list does the same filter and still paginates.
+
+Longer notes: `filtering.md`.
+
+### Approach 2: `filters` dict + `filter(**filters)`
+
+Build a dictionary of lookups only for params that were sent, then unpack once. The search word still comes from the URL.
+
+```python
+def get_tasks_with_filter(request):
+    """
+    To achieve this, we modify the database query to include the filters.
+    If any filter is passed, it is added to the DB query.
+    If no filter is passed, all tasks are returned.
+    """
+    filters = {}
+
+    if "completed" in request.query_params:
+        filters["completed"] = request.query_params["completed"].lower() == "true"
+
+    if request.query_params.get("title"):
+        filters["title__endswith"] = request.query_params["title"]
+
+    tasks = Task.objects.filter(**filters)  # all tasks if filters = {}
+    serializer = TaskSerializer(tasks, many=True)
+    return Response(serializer.data)
+```
+
+`**filters` turns the dict into kwargs: `filter(completed=True, title__endswith="Postgres")`. Empty `{}` returns every task.
+
+Difference from Approach 1: this example uses `title__endswith` (`LIKE '%word'`) instead of `title__icontains` (`ILIKE '%word%'`), and it is a standalone function (no viewset pagination unless you add it).
+
+### Approach 3: `django-filter`
+
+Declare a `FilterSet`. Wire `DjangoFilterBackend` on the viewset. No manual `if` blocks. This is what the project code uses now.
+
+List every `Task` field in `Meta.fields` so each one is a query param. (`fields = "__all__"` skips the PK, so `id` must be listed.) `filter_overrides` keeps text fields on `icontains` so `?title=` still means contains.
+
+**Install:** `pip install django-filter` (`django-filter==26.2` in `requirements.txt`)
+
+**`config/settings.py`:** add `"django_filters"` to `INSTALLED_APPS`.
+
+**`tasks/filters.py`:**
+
+```python
+import django_filters
+from django.db import models
+from .models import Task
+
+class TaskFilter(django_filters.FilterSet):
+    class Meta:
+        model = Task
+        fields = [
+            "id", "title", "description", "completed",
+            "created_at", "updated_at", "user",
+        ]
+        filter_overrides = {
+            models.CharField: {
+                "filter_class": django_filters.CharFilter,
+                "extra": lambda f: {"lookup_expr": "icontains"},
+            },
+            models.TextField: {
+                "filter_class": django_filters.CharFilter,
+                "extra": lambda f: {"lookup_expr": "icontains"},
+            },
+        }
+```
+
+**`tasks/views.py`:**
+
+```python
+from rest_framework.filters import SearchFilter, OrderingFilter
+from django_filters.rest_framework import DjangoFilterBackend
+from .filters import TaskFilter
+
+class TaskViewSet(ModelViewSet):
+    queryset = Task.objects.all()
+    serializer_class = TaskSerializer
+    pagination_class = TaskPagination
+    # filter_backends = [DjangoFilterBackend]  # filters only
+    # filter_backends = [DjangoFilterBackend, SearchFilter]  # + search
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = TaskFilter
+    search_fields = ["title", "description"]
+    ordering_fields = ["id", "title", "completed", "created_at", "updated_at"]
+    ordering = ["id"]
+```
+
+| URL | SQL idea |
+| --- | --- |
+| `/api/tasks/?completed=true` | `WHERE completed = true` |
+| `/api/tasks/?title=Postgres` | `WHERE title ILIKE '%Postgres%'` |
+| `/api/tasks/?description=linked` | `WHERE description ILIKE '%linked%'` |
+| `/api/tasks/?user=1` | `WHERE user_id = 1` |
+| `/api/tasks/?id=3` | `WHERE id = 3` |
+| `/api/tasks/?completed=true&title=Postgres&page=1&page_size=20` | combine fields, then page |
+
+### API call and result (filter)
+
+`GET http://127.0.0.1:8002/api/tasks/?title=Postgres&page=1&page_size=2`
+
+```json
+{
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+    {"id": 1, "title": "Learn Postgres", "completed": false, "user": null}
+  ]
+}
+```
+
+`GET http://127.0.0.1:8002/api/tasks/?user=1&page=1&page_size=2` → `count: 801`, first rows id `3` and `4`.
+
+`count` is the filtered total. Pagination still comes from `TaskPagination`. Longer notes: `filtering.md`.
+
+## Why filtering if I already have search?
+
+They are not duplicates.
+
+- **Search** = one text box (`?search=Postgres`). OR across text fields (`title` / `description`). Good for "find anything about this word".
+- **Filter** = precise controls per field (`?completed=false`, `?user=1`, `?id=3`). AND across params. Good for status, owner, ids, dates.
+
+`?search=false` does **not** mean "incomplete tasks". `?completed=false` does. `?search=1` does **not** mean "user id 1". `?user=1` does.
+
+Real screens use both: search box + filter dropdowns →  
+`/api/tasks/?completed=false&search=API&page=1`
+
+Longer write-up: `search.md` and the top of `filtering.md`.
+
+## Search (easiest): DRF `SearchFilter`
+
+Filter = one param per field (`?title=` + `?completed=`). Search = one param across many fields (`?search=`).
+
+Built into DRF. Add `SearchFilter` next to `DjangoFilterBackend` and set `search_fields`. Older `filter_backends` lines are kept as comments.
+
+```python
+from rest_framework.filters import SearchFilter, OrderingFilter
+
+filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+search_fields = ["title", "description"]
+```
+
+SQL idea: `WHERE title ILIKE '%word%' OR description ILIKE '%word%'`.
+
+### API call and result (search)
+
+`GET http://127.0.0.1:8002/api/tasks/?search=Postgres&page=1&page_size=2`
+
+```json
+{
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+    {"id": 1, "title": "Learn Postgres", "completed": false, "user": null}
+  ]
+}
+```
+
+`GET http://127.0.0.1:8002/api/tasks/?completed=false&search=API&page=1&page_size=2` → `count: 67`, titles like `Write API tests #1`.
+
+Longer notes: `search.md`.
+
+## Ordering (easiest): DRF `OrderingFilter`
+
+Sort with `?ordering=field` (asc) or `?ordering=-field` (desc). Allow-list in `ordering_fields`. Default when omitted: `ordering = ["id"]`.
+
+```python
+from rest_framework.filters import OrderingFilter
+
+filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+ordering_fields = ["id", "title", "completed", "created_at", "updated_at"]
+ordering = ["id"]
+```
+
+### API call and result (ordering)
+
+`GET http://127.0.0.1:8002/api/tasks/?ordering=-id&page=1&page_size=2`
+
+```json
+{
+  "count": 1003,
+  "next": "http://127.0.0.1:8002/api/tasks/?ordering=-id&page=2&page_size=2",
+  "previous": null,
+  "results": [
+    {"id": 1003, "title": "Review pull request #1000", "completed": false},
+    {"id": 1002, "title": "Verify login flow #999", "completed": true}
+  ]
+}
+```
+
+Combined: `GET http://127.0.0.1:8002/api/tasks/?completed=false&search=API&ordering=-id&page=1&page_size=2` → `count: 67`, ids `994` then `974`.
+
+Longer notes: `ordering.md`.
